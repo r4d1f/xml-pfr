@@ -1,41 +1,40 @@
 # -*- coding: utf-8 -*-
 import pypyodbc
 import datetime
+import zipfile
+import os
 
 FixSex = lambda i: 'МУЖСКОЙ' if i == 'Муж' else 'ЖЕНСКИЙ'
 
 db_path = input('Введите название базы данных: ')
 db = pypyodbc.win_connect_mdb(db_path)
-#sql = 'SELECT * FROM INFORMATION_SCHEMA.TABLES;'
 cursor = db.cursor()
 tables = []
-for row in cursor.tables():
-    if (row[3] == 'TABLE'):
-        tables.append(row[2])
 res = []
-for table in tables:
-    sql_get_rows = f'SELECT COUNT(*) FROM {table};'
-    rowcount = cursor.execute(sql_get_rows).fetchone()[0]
-    sql = f'SELECT [Фамилия получателя], [Имя], [Отчество], [Дата рождения], [Пол], [pfr_file_name]\
-           FROM {table};'
-    cursor.execute(sql)
-    for _ in range(rowcount):
-        res.append(cursor.fetchone())
-
+table = input("Введите название таблицы: ")
+sql_get_rows = f'SELECT COUNT(*) FROM {table};'
+rowcount = cursor.execute(sql_get_rows).fetchone()[0]
+sql = f'SELECT [Фамилия получателя], [Имя получателя], [Отчество получателя], [Дата рождения получателя], [Пол получателя], [pfr_file_name]\
+       FROM {table};'
+cursor.execute(sql)
+for _ in range(rowcount):
+    res.append(cursor.fetchone())
+db.close()
 res.sort(key = lambda i: i[-1] if i[-1] != None else '', reverse = True)
 countPeopleInFile = []
-for i in range(len(res)):
+for i in range(len(res)-1):
     filename = res[i][-1]
     if filename == None:
         break
     if i == 0:
         j = 0
         countPeopleInFile.append(1)
-    elif i != 0 and res[i-1][-1] != filename:
-        j+=1
-        countPeopleInFile.append(1)
     if filename == res[i+1][-1]:
         countPeopleInFile[j] += 1
+    else:
+        j+=1
+        countPeopleInFile.append(1)
+nowDate = datetime.datetime.now().strftime("%d.%m.%y")
 for i in range(len(res)):
     filename = res[i][-1]
     if filename == None:
@@ -79,7 +78,7 @@ for i in range(len(res)):
                 f"<Количество>{countPeopleInFile[j]}</Количество>\r\n" + \
                 "</НаличиеДокументов>\r\n" + \
                 "</СоставДокументов>\r\n" + \
-                "<ДатаСоставления>" + datetime.datetime.now().strftime("%d.%m.%y") + "</ДатаСоставления>\r\n" + \
+                "<ДатаСоставления>" + nowDate + "</ДатаСоставления>\r\n" + \
                 "</ВХОДЯЩАЯ_ОПИСЬ>\r\n"
     elif i != 0 and res[i-1][-1] != filename:
         j += 1
@@ -119,23 +118,47 @@ for i in range(len(res)):
                 f"<Количество>{countPeopleInFile[j]}</Количество>\r\n" + \
                 "</НаличиеДокументов>\r\n" + \
                 "</СоставДокументов>\r\n" + \
-                "<ДатаСоставления>" + datetime.datetime.now().strftime("%d.%m.%y") + "</ДатаСоставления>\r\n" + \
+                "<ДатаСоставления>" + nowDate + "</ДатаСоставления>\r\n" + \
                 "</ВХОДЯЩАЯ_ОПИСЬ>\r\n"
-
-    xml_text += "<ЗАПРОС_СНИЛС>\r\n" + \
-                f"<НомерВпачке>{numInPack}</НомерВпачке>\r\n" + \
-                "<ФИО>\r\n" + \
-                f"<Фамилия>{res[i][0]}</Фамилия>\r\n" + \
-                f"<Имя>{res[i][1]}</Имя>\r\n" + \
-                f"<Отчество>{res[i][2]}</Отчество>\r\n" + \
-                "</ФИО>\r\n" + \
-                "<Пол>" + FixSex(res[i][4]) + "</Пол>\r\n" + \
-                "<ДатаРождения>" + res[i][3].strftime("%d.%m.%y") + f"</ДатаРождения>\r\n" + \
-                "<ДатаЗаполнения>" + datetime.datetime.now().strftime("%d.%m.%y") + "</ДатаЗаполнения>\r\n" + \
-                "</ЗАПРОС_СНИЛС>\r\n"
+    if res[i][2] != None:
+        xml_text += "<ЗАПРОС_СНИЛС>\r\n" + \
+                    f"<НомерВпачке>{numInPack}</НомерВпачке>\r\n" + \
+                    "<ФИО>\r\n" + \
+                    "<Фамилия>" + res[i][0].upper() + "</Фамилия>\r\n" + \
+                    "<Имя>" + res[i][1].upper() + "</Имя>\r\n" + \
+                    "<Отчество>" + res[i][2].upper() + "</Отчество>\r\n" + \
+                    "</ФИО>\r\n" + \
+                    "<Пол>" + FixSex(res[i][4]) + "</Пол>\r\n" + \
+                    "<ДатаРождения>" + res[i][3] + f"</ДатаРождения>\r\n" + \
+                    "<ДатаЗаполнения>" + nowDate + "</ДатаЗаполнения>\r\n" + \
+                    "</ЗАПРОС_СНИЛС>\r\n"
+    else:
+        xml_text += "<ЗАПРОС_СНИЛС>\r\n" + \
+                    f"<НомерВпачке>{numInPack}</НомерВпачке>\r\n" + \
+                    "<ФИО>\r\n" + \
+                    "<Фамилия>" + res[i][0].upper() + "</Фамилия>\r\n" + \
+                    "<Имя>" + res[i][1].upper() + "</Имя>\r\n" + \
+                    "<Отчество/>" + \
+                    "</ФИО>\r\n" + \
+                    "<Пол>" + FixSex(res[i][4]) + "</Пол>\r\n" + \
+                    "<ДатаРождения>" + res[i][3] + f"</ДатаРождения>\r\n" + \
+                    "<ДатаЗаполнения>" + nowDate + "</ДатаЗаполнения>\r\n" + \
+                    "</ЗАПРОС_СНИЛС>\r\n"
     numInPack += 1
     if i == len(res)-1:
         xml_text += "</ПачкаВходящихДокументов>\r\n" + \
                     "</ФайлПФР>\r\n"
         file.write(xml_text)
         file.close()
+
+s_dir = os.getcwd() + "\\"
+path_to_zip = s_dir + nowDate + ".zip"
+newzip=zipfile.ZipFile(path_to_zip,'w')
+files = os.listdir(os.getcwd()) 
+xml_files = list(filter(lambda x: x.endswith('.xml'), files))
+for f in xml_files:
+    newzip.write(f)
+    os.remove(f)
+newzip.close()
+
+
